@@ -6,6 +6,7 @@ import route.node.{DynamicRouteNode, RouteNode, StaticRouteNode}
 import scala.annotation.tailrec
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
+import scala.util.{Failure, Success, Try}
 
 // be careful , don't overload the route register before
 
@@ -72,13 +73,15 @@ object RouteTree {
   }
 
   def matchRoute(path: String, method: String): Option[(Int => Int, List[(String, String)])] = {
-    if (!path.startsWith("/")) {
-      return Option.empty
-    }
+    // path must be start with "/
     if (path == "/") {
-      Some(RouteTree.rootRouteNode.handlers(method), List())
-    }
-    else {
+      val handlerOpt = RouteTree.rootRouteNode.handlers.get(method)
+      if (handlerOpt.isDefined) {
+        Option(handlerOpt.get, List())
+      } else {
+        Option.empty
+      }
+    } else {
       val routeNodePathList = path.split("/")
       val dynamicParamListBuffer: ListBuffer[(String, String)] = ListBuffer.empty
       val handlerOpt = matchRouteImpl(RouteTree.rootRouteNode, routeNodePathList.toList.tail)(using method, dynamicParamListBuffer)
