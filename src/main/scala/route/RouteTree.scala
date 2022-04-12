@@ -1,6 +1,7 @@
 package route
 
 import com.sun.net.httpserver.HttpExchange
+import route.inter.{Complete, Context}
 import route.node.{DynamicRouteNode, RouteNode, StaticRouteNode}
 
 import scala.annotation.tailrec
@@ -14,20 +15,22 @@ object RouteTree {
 
   val rootRouteNode: RouteNode = StaticRouteNode("")
 
-  def buildRoute(path: String, method: String, handler: Int => Int): Unit = {
+  def buildRoute(path: String, method: String, handler: Context => Complete): Try[_] = {
     if (!path.startsWith("/")) {
-      throw new IllegalArgumentException("path must start with '/'")
+      return Failure(new IllegalArgumentException("path must start with '/'"))
     }
     if (path == "/") {
       RouteTree.rootRouteNode.handlers.put(method, handler)
     } else {
       buildRouteImpl(RouteTree.rootRouteNode, path.split("/").toList.tail)(using method, handler)
     }
+    Success(null)
   }
 
 
   @tailrec
-  private def buildRouteImpl(currentNode: RouteNode, routeNodePathList: List[String])(using method: String, handler: Int => Int): Unit = {
+  private def buildRouteImpl(currentNode: RouteNode, routeNodePathList: List[String])
+                            (using method: String, handler: Context => Complete): Unit = {
 
     // all elements are matched
     // register handler with method
@@ -72,42 +75,45 @@ object RouteTree {
     }
   }
 
-  def matchRoute(path: String, method: String): Option[(Int => Int, List[(String, String)])] = {
-    // path must be start with "/
+  def matchRoute(path: String, method: String): (Option[Context => Complete], List[(String, String)], Boolean) = {
+    if (!path.startsWith("/")) {
+      return (Option.empty, List(), false)
+    }
     if (path == "/") {
       val handlerOpt = RouteTree.rootRouteNode.handlers.get(method)
-      if (handlerOpt.isDefined) {
-        Option(handlerOpt.get, List())
+      if (handlerOpt.nonEmpty) {
+        (handlerOpt, List(), false)
       } else {
-        Option.empty
+        // handlers map is no blank
+        // but can't find this method's handler
+        (Option.empty, List(), RouteTree.rootRouteNode.handlers.nonEmpty)
+
       }
     } else {
       val routeNodePathList = path.split("/")
       val dynamicParamListBuffer: ListBuffer[(String, String)] = ListBuffer.empty
-      val handlerOpt = matchRouteImpl(RouteTree.rootRouteNode, routeNodePathList.toList.tail)(using method, dynamicParamListBuffer)
+      val (handlerOpt, isMethodNotAllow) = matchRouteImpl(RouteTree.rootRouteNode, routeNodePathList.toList.tail)(using method, dynamicParamListBuffer)
       if (handlerOpt.isEmpty) {
-        Option.empty
+        (Option.empty, List(), isMethodNotAllow)
       } else {
-        Some(handlerOpt.get, dynamicParamListBuffer.result())
+        (handlerOpt, dynamicParamListBuffer.result(), false)
       }
     }
   }
 
   @tailrec
   private def matchRouteImpl(currentNode: RouteNode, routeNodePathList: List[String])
-                            (using method: String, paramListBuffer: ListBuffer[(String, String)]): Option[Int => Int] = {
+                            (using method: String, paramListBuffer: ListBuffer[(String, String)])
+  : (Option[Context => Complete], Boolean) = {
     // match all path slice
     if (routeNodePathList.isEmpty) {
-
       if (currentNode.handlers.contains(method)) {
 
-        return Some(currentNode.handlers(method))
+        return (Some(currentNode.handlers(method)), false)
 
-      }
+      } else {
 
-      else {
-        // unregister node
-        return Option.empty
+        return (Option.empty, currentNode.handlers.nonEmpty)
 
       }
 
@@ -134,7 +140,7 @@ object RouteTree {
 
       } else {
         // unregister node
-        Option.empty
+        (Option.empty, false)
 
       }
     }

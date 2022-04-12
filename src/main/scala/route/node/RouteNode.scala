@@ -1,6 +1,6 @@
 package route.node
 
-import route.node.RouteNode
+import route.inter.{Complete, Context}
 
 import scala.collection.mutable
 
@@ -19,6 +19,6 @@ abstract trait RouteNode {
 
   val children: mutable.HashMap[String, RouteNode]
 
-  val handlers: mutable.HashMap[String, Int => Int]
+  val handlers: mutable.HashMap[String, Context => Complete]
 
 }
